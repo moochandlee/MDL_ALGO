@@ -52,6 +52,11 @@ async def render():
         table_container = ui.column().classes('w-full')
 
         async def load_table():
+            def safe_str(val):
+                import math
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    return "—"
+                return str(val)
             table_container.clear()
             summary_row.clear()
 
@@ -143,7 +148,7 @@ async def render():
                         "date":        row.get("date",""),
                         "institution": f"{row.get('institution','')} · {row.get('account_name','')}",
                         "description": row.get("description",""),
-                        "category":    (row.get("category") or "—").replace("_"," ").title(),
+                        "category":    safe_str(row.get("category")).replace("_", " ").title(),
                         "status":      row.get("status",""),
                         "amount_fmt":  f"{'+'if amt<0 else '-'}${abs(amt):,.2f}",
                         "_debit":      amt > 0,

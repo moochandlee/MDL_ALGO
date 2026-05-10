@@ -19,7 +19,7 @@ class Settings:
     schwab_callback:   str = field(default_factory=lambda: os.getenv("SCHWAB_CALLBACK_URL", "https://127.0.0.1"))
 
     # ── Teller ──────────────────────────────────────────────────────────
-    teller_token:  str = field(default_factory=lambda: os.getenv("TELLER_TOKEN", ""))
+    teller_token:  str = field(default_factory=lambda: os.getenv("TELLER_COF_TOKEN", ""))
     teller_cert:   str = field(default_factory=lambda: os.getenv("TELLER_CERT", ""))
     teller_key:    str = field(default_factory=lambda: os.getenv("TELLER_KEY", ""))
     teller_app_id: str = field(default_factory=lambda: os.getenv("TELLER_APP_ID", ""))

@@ -41,14 +41,15 @@ app.state.pending_orders = []
 
 # ── Global layout shell ──────────────────────────────────────────────────────
 def nav_shell():
-    """Persistent top nav + side drawer rendered on every page."""
-    with ui.header(elevated=True).classes('items-center justify-between px-6 py-3 bg-[#0a0f1e] border-b border-[#1e2d4a]'):
+    menu_btn = None
+
+    with ui.header(elevated=True).classes('items-center justify-between px-6 bg-[#0a0f1e] border-b border-[#1e2d4a]').style('padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: 12px;'):
         with ui.row().classes('items-center gap-3'):
+            menu_btn = ui.button(icon='menu').props('flat round dense').classes('text-white')
             ui.icon('auto_awesome', size='1.6rem').classes('text-[#4fc3f7]')
             ui.label('Finance Autopilot').classes('text-white font-bold text-lg tracking-tight')
 
         with ui.row().classes('items-center gap-2'):
-            # Live clock
             clock = ui.label().classes('text-[#8899aa] text-sm font-mono')
             async def tick():
                 while True:
@@ -56,13 +57,15 @@ def nav_shell():
                     await asyncio.sleep(1)
             asyncio.create_task(tick())
 
-            # Sync status badge
             ui.badge('', color='green').bind_text_from(
                 app.state, 'last_sync',
                 backward=lambda v: f"Synced {v}" if v else "Not synced"
             ).classes('text-xs')
 
-    with ui.left_drawer(fixed=True).classes('bg-[#060c1a] border-r border-[#1e2d4a] pt-4'):
+    drawer = ui.left_drawer(fixed=True).classes('bg-[#060c1a] border-r border-[#1e2d4a] pt-4')
+    menu_btn.on('click', drawer.toggle)
+
+    with drawer:
         nav_items = [
             ('dashboard',   'Dashboard',   '/'),
             ('receipt_long','Ledger',      '/ledger'),
