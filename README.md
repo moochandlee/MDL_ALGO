@@ -20,9 +20,8 @@ finance_app/
 │   ├── orders.py        # Order builder with preview → confirm flow
 │   ├── alerts.py        # Notification test + history
 │   └── settings_page.py # Config status, thresholds, .env guide
-├── static/              # PWA icons (run generate_icons.py)
+├── static/              # PWA icons
 ├── data/                # Auto-created: balances.csv, transactions.csv
-├── generate_icons.py    # One-time icon generation
 └── requirements.txt
 ```
 
@@ -33,9 +32,8 @@ finance_app/
 ### 1. Install dependencies
 
 ```bash
-cd finance_app
+cd MDL_ALGO
 pip install -r requirements.txt
-python generate_icons.py   # creates PWA icons
 ```
 
 ### 2. Create your `.env`
@@ -50,7 +48,7 @@ TELLER_TOKEN=...
 TELLER_CERT=~/.teller/cert.pem
 TELLER_KEY=~/.teller/key.pem
 SMTP_USER=you@gmail.com
-SMTP_PASSWORD=your_gmail_app_password   # NOT your real password — use App Password
+SMTP_PASSWORD=your_gmail_app_password   # NOT your real password — use App Password from Google Privacy Settings
 ALERT_EMAIL_TO=you@gmail.com
 NTFY_TOPIC=finance-autopilot-yourprivatetopic
 ```
@@ -91,14 +89,6 @@ No Apple developer account needed.
 > name, or self-host ntfy on your own server for full privacy.
 
 ### Running on a VPS (access from anywhere)
-
-```bash
-# On your VPS (e.g. Digital Ocean $6/mo droplet):
-pip install -r requirements.txt
-python main.py
-
-# Expose via nginx + SSL (recommended) or Tailscale (easier, private)
-```
 
 With **Tailscale** (easiest):
 1. Install Tailscale on your Mac/server and iPhone

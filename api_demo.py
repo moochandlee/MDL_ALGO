@@ -7,8 +7,8 @@ import schwabdev
 # =========================================================
 load_dotenv()
 
-APP_KEY = os.getenv("app_key")
-APP_SECRET = os.getenv("app_secret")
+APP_KEY = os.getenv("SCHWAB_APP_KEY")
+APP_SECRET = os.getenv("SCHWAB_APP_SECRET")
 CALLBACK_URL = os.getenv("callback_url")
 
 # =========================================================
@@ -115,71 +115,65 @@ for symbol, data in quotes.items():
 # =========================================================
 # Example order
 # =========================================================
-# BUY 1 share of AMD at LIMIT $1.00
-# (Likely won't fill — safer for testing)
-# =========================================================
 
-# order = {
-#     "orderType": "LIMIT",
-#     "session": "NORMAL",
-#     "duration": "DAY",
-#     "orderStrategyType": "SINGLE",
-#     "price": "4.00",
-#     "orderLegCollection": [
-#         {
-#             "instruction": "BUY",
-#             "quantity": 1,
-#             "instrument": {
-#                 "symbol": "NOK",
-#                 "assetType": "EQUITY"
-#             }
-#         }
-#     ]
-# }
+order = {
+    "orderType": "LIMIT",
+    "session": "NORMAL",
+    "duration": "DAY",
+    "orderStrategyType": "SINGLE",
+    "price": "4.50",
+    "orderLegCollection": [
+        {
+            "instruction": "BUY",
+            "quantity": 1,
+            "instrument": {
+                "symbol": "BBAI",
+                "assetType": "EQUITY"
+            }
+        }
+    ]
+}
 
 # =========================================================
 # Preview order (SAFE)
 # =========================================================
-print("\n===== PREVIEW ORDER =====")
+# print("\n===== PREVIEW ORDER =====")
 
-preview_resp = client.preview_order(account_hash, order)
+# preview_resp = client.preview_order(account_hash, order)
 
-print(f"Preview status code: {preview_resp.status_code}")
+# print(f"Preview status code: {preview_resp.status_code}")
 
-try:
-    print(preview_resp.json())
-except Exception:
-    print(preview_resp.text)
+# try:
+#     print(preview_resp.json())
+# except Exception:
+#     print(preview_resp.text)
 
 # =========================================================
-# LIVE ORDER (DISABLED)
-# =========================================================
-# Uncomment to place a REAL order
+# LIVE ORDER
 # =========================================================
 
-"""
-print("\n===== PLACING LIVE ORDER =====")
 
-place_resp = client.place_order(account_hash, order)
+# print("\n===== PLACING LIVE ORDER =====")
 
-print(f"Order response code: {place_resp.status_code}")
+# place_resp = client.place_order(account_hash, order)
 
-# Get order ID
-order_id = place_resp.headers.get(
-    "location",
-    "/"
-).split("/")[-1]
+# print(f"Order response code: {place_resp.status_code}")
 
-print(f"Order ID: {order_id}")
+# # Get order ID
+# order_id = place_resp.headers.get(
+#     "location",
+#     "/"
+# ).split("/")[-1]
 
-# Get order details
-if order_id:
-    details = client.order_details(
-        account_hash,
-        order_id
-    )
+# print(f"Order ID: {order_id}")
 
-    print(details.json())
-"""
+# # Get order details
+# if order_id:
+#     details = client.order_details(
+#         account_hash,
+#         order_id
+#     )
 
-print("\nDone.")
+#     print(details.json())
+
+# print("\nDone.")
