@@ -9,8 +9,11 @@ from datetime import datetime
 
 from config import settings
 from scheduler import start_scheduler
-from pages import dashboard, ledger, orders, settings_page, alerts
+from pages import dashboard, ledger, orders, settings_page
 
+from execution.guardrails import initialize_risk_engine
+from pages import quant_agent_page
+from pages import strategies
 
 # ── PWA manifest + service worker registration ──────────────────────────────
 app.add_static_files('/static', 'static')
@@ -35,7 +38,6 @@ async def manifest():
 
 # ── Shared state (in-memory, survives page navigation) ──────────────────────
 app.state.last_sync     = None
-app.state.alerts_queue  = []
 app.state.pending_orders = []
 
 
@@ -67,11 +69,12 @@ def nav_shell():
 
     with drawer:
         nav_items = [
-            ('dashboard',   'Dashboard',   '/'),
-            ('receipt_long','Ledger',      '/ledger'),
-            ('trending_up', 'Orders',      '/orders'),
-            ('notifications','Alerts',     '/alerts'),
-            ('settings',    'Settings',    '/settings'),
+            ('dashboard',    'Dashboard',   '/'),
+            ('receipt_long', 'Ledger',      '/ledger'),
+            ('trending_up',  'Trading',     '/orders'),
+            ('psychology',   'Quant Agent', '/quant'),
+            ('settings',     'Settings',    '/settings'),
+            ('insights',      'Strategies',  '/strategies'),
         ]
         for icon, label, path in nav_items:
             with ui.link(target=path).classes('no-underline w-full'):
@@ -115,11 +118,11 @@ async def orders_page():
     await orders.render()
 
 
-@ui.page('/alerts')
-async def alerts_page():
+@ui.page('/quant')
+async def quant_page():
     ui.add_head_html('<style>body{background:#0a0f1e}</style>')
     nav_shell()
-    await alerts.render()
+    await quant_agent_page.render()
 
 
 @ui.page('/settings')
@@ -129,9 +132,18 @@ async def settings_pg():
     await settings_page.render()
 
 
+@ui.page('/strategies')
+async def strategies_pg():
+    ui.add_head_html('<style>body{background:#0a0f1e}</style>')
+    nav_shell()
+    await strategies.render()
+
+
 # ── Startup ──────────────────────────────────────────────────────────────────
+
 @app.on_startup
 async def startup():
+    initialize_risk_engine()
     start_scheduler()
     print("Finance Autopilot started.")
 

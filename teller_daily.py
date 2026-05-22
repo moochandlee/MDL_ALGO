@@ -92,6 +92,26 @@ DATA_DIR        = Path(os.environ.get("TELLER_DATA_DIR", "./teller_data"))
 BALANCES_CSV    = DATA_DIR / "balances.csv"
 TRANSACTIONS_CSV= DATA_DIR / "transactions.csv"
 STATE_FILE      = DATA_DIR / "sync_state.json"
+TOKENS_FILE     = DATA_DIR / "teller_tokens.json"
+
+def load_teller_tokens() -> dict:
+    if TOKENS_FILE.exists():
+        try:
+            return json.loads(TOKENS_FILE.read_text())
+        except Exception:
+            pass
+    # Auto-migrate from env
+    token = os.environ.get("TELLER_COF_TOKEN") or os.environ.get("TELLER_TOKEN")
+    if token:
+        tokens = {"capital_one": token}
+        TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TOKENS_FILE.write_text(json.dumps(tokens, indent=2))
+        return tokens
+    return {}
+
+def save_teller_tokens(tokens: dict):
+    TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    TOKENS_FILE.write_text(json.dumps(tokens, indent=2))
 
 # Thresholds for "dates of importance" alerts
 LOW_BALANCE_THRESHOLD   = float(os.environ.get("LOW_BALANCE_THRESHOLD", "500"))
@@ -216,8 +236,18 @@ def run_connect_flow(app_id: str, port: int) -> str:
 
     token = _captured_token
     print(f"\nToken captured: {token[:14]}…")
-    print(f"\nSave this token — you won't need to log in again:\n\n    {token}\n")
-    print("    Add it to .env:  TELLER_TOKEN=" + token)
+    label = input("\nEnter a label for this bank (e.g., 'chase', 'capital_one'): ").strip() or "bank"
+    
+    tokens = load_teller_tokens()
+    base_label = label
+    count = 1
+    while label in tokens:
+        label = f"{base_label}_{count}"
+        count += 1
+    tokens[label] = token
+    save_teller_tokens(tokens)
+    
+    print(f"\n✅ Saved token as '{label}' in {TOKENS_FILE}\n")
     return token
 
 
@@ -293,101 +323,97 @@ def save_csv(df: pd.DataFrame, path: Path):
 # ---------------------------------------------------------------------------
 # Core daily sync
 # ---------------------------------------------------------------------------
-def sync(token: str, cert, verbose: bool = False):
+def sync(tokens_dict: dict, cert, verbose: bool = False):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     today     = date.today().isoformat()
     state     = load_state()
-    accounts  = fetch_accounts(token, cert)
-
-    if not accounts:
-        print("No accounts found.")
-        return
-
-    # ---- Balances snapshot ------------------------------------------------
+    
+    all_accounts = []
     bal_rows = []
     balances_by_id = {}
-
-    for acct in accounts:
-        aid  = acct["id"]
-        inst = acct.get("institution", {}).get("name", "Unknown")
-        name = acct.get("name", "")
-        try:
-            b = fetch_balance(token, cert, aid)
-            balances_by_id[aid] = b
-            bal_rows.append({
-                "snapshot_date": today,
-                "account_id":    aid,
-                "institution":   inst,
-                "account_name":  name,
-                "account_type":  acct.get("type", ""),
-                "subtype":       acct.get("subtype", ""),
-                "available":     b.get("available"),
-                "ledger":        b.get("ledger"),
-            })
-        except Exception as e:
-            print(f"  ⚠ Balance fetch failed for {aid}: {e}")
-
-    bal_df = load_csv(BALANCES_CSV, BALANCE_COLS)
-    new_bal_df = pd.DataFrame(bal_rows, columns=BALANCE_COLS)
-    bal_df = pd.concat([bal_df, new_bal_df], ignore_index=True)
-    save_csv(bal_df, BALANCES_CSV)
-
-    # ---- Transactions sync ------------------------------------------------
-    txn_df      = load_csv(TRANSACTIONS_CSV, TXN_COLS)
     new_txn_rows = []
 
-    for acct in accounts:
-        aid  = acct["id"]
-        inst = acct.get("institution", {}).get("name", "Unknown")
-        name = acct.get("name", "")
-
-        # Determine sync window: go back LOOKBACK_DAYS from last sync
-        # (catches pending→posted date shifts), or 90 days on first run
-        last_sync = state.get(aid)
-        if last_sync:
-            start = (datetime.fromisoformat(last_sync) - timedelta(days=LOOKBACK_DAYS)).date().isoformat()
-        else:
-            start = (date.today() - timedelta(days=90)).isoformat()
-
+    for label, token in tokens_dict.items():
         try:
-            txns = fetch_transactions(token, cert, aid, start_date=start, end_date=today)
+            accounts  = fetch_accounts(token, cert)
+            all_accounts.extend(accounts)
         except Exception as e:
-            print(f"  ⚠ Transaction fetch failed for {aid}: {e}")
+            print(f"Error fetching accounts for {label}: {e}")
             continue
 
-        for t in txns:
-            details      = t.get("details") or {}
-            counterparty = details.get("counterparty") or {}
-            new_txn_rows.append({
-                "transaction_id":  t["id"],
-                "account_id":      aid,
-                "institution":     inst,
-                "account_name":    name,
-                "date":            t.get("date"),
-                "description":     t.get("description"),
-                "amount":          t.get("amount"),
-                "type":            t.get("type"),
-                "status":          t.get("status"),
-                "category":        details.get("category"),
-                "counterparty":    counterparty.get("name"),
-                "running_balance": t.get("running_balance"),
-                "fetched_date":    today,
-            })
+        if not accounts:
+            continue
 
-        state[aid] = today
+        for acct in accounts:
+            aid  = acct["id"]
+            inst = acct.get("institution", {}).get("name", "Unknown")
+            name = acct.get("name", "")
+            try:
+                b = fetch_balance(token, cert, aid)
+                balances_by_id[aid] = b
+                bal_rows.append({
+                    "snapshot_date": today,
+                    "account_id":    aid,
+                    "institution":   inst,
+                    "account_name":  name,
+                    "account_type":  acct.get("type", ""),
+                    "subtype":       acct.get("subtype", ""),
+                    "available":     b.get("available"),
+                    "ledger":        b.get("ledger"),
+                })
+            except Exception as e:
+                print(f"  ⚠ Balance fetch failed for {aid}: {e}")
 
-    # Upsert: keep existing rows, overwrite on matching transaction_id
-    if new_txn_rows:
-        incoming = pd.DataFrame(new_txn_rows, columns=TXN_COLS)
-        if not txn_df.empty:
-            txn_df = txn_df[~txn_df["transaction_id"].isin(incoming["transaction_id"])]
-        txn_df = pd.concat([txn_df, incoming], ignore_index=True)
-        txn_df = txn_df.sort_values(["account_id", "date"], ascending=[True, False])
+            last_sync = state.get(aid)
+            if last_sync:
+                start = (datetime.fromisoformat(last_sync) - timedelta(days=LOOKBACK_DAYS)).date().isoformat()
+            else:
+                start = (date.today() - timedelta(days=90)).isoformat()
+
+            try:
+                txns = fetch_transactions(token, cert, aid, start_date=start, end_date=today)
+            except Exception as e:
+                print(f"  ⚠ Transaction fetch failed for {aid}: {e}")
+                continue
+
+            for t in txns:
+                details      = t.get("details") or {}
+                counterparty = details.get("counterparty") or {}
+                new_txn_rows.append({
+                    "transaction_id":  t["id"],
+                    "account_id":      aid,
+                    "institution":     inst,
+                    "account_name":    name,
+                    "date":            t.get("date"),
+                    "description":     t.get("description"),
+                    "amount":          t.get("amount"),
+                    "type":            t.get("type"),
+                    "status":          t.get("status"),
+                    "category":        details.get("category"),
+                    "counterparty":    counterparty.get("name"),
+                    "running_balance": t.get("running_balance"),
+                    "fetched_date":    today,
+                })
+
+            state[aid] = today
+
+    if not all_accounts:
+        print("No accounts found across any tokens.")
+        return
+
+    bal_df = load_csv(BALANCES_CSV, BALANCE_COLS)
+    if bal_rows:
+        new_bal_df = pd.DataFrame(bal_rows, columns=BALANCE_COLS)
+        bal_df = pd.concat([bal_df, new_bal_df], ignore_index=True)
+        save_csv(bal_df, BALANCES_CSV)
+
+    txn_df      = load_csv(TRANSACTIONS_CSV, TXN_COLS)
+    new_txn_rows = []
 
     save_csv(txn_df, TRANSACTIONS_CSV)
     save_state(state)
 
-    return accounts, balances_by_id, txn_df, new_txn_rows
+    return all_accounts, balances_by_id, txn_df, new_txn_rows
 
 
 # ---------------------------------------------------------------------------
@@ -540,11 +566,12 @@ def main():
 
     # Override data dir if passed
     if args.data_dir:
-        global DATA_DIR, BALANCES_CSV, TRANSACTIONS_CSV, STATE_FILE
+        global DATA_DIR, BALANCES_CSV, TRANSACTIONS_CSV, STATE_FILE, TOKENS_FILE
         DATA_DIR         = Path(args.data_dir)
         BALANCES_CSV     = DATA_DIR / "balances.csv"
         TRANSACTIONS_CSV = DATA_DIR / "transactions.csv"
         STATE_FILE       = DATA_DIR / "sync_state.json"
+        TOKENS_FILE      = DATA_DIR / "teller_tokens.json"
 
     # ── Cert / key ──────────────────────────────────────────────────────
     cert_path = args.cert or os.environ.get("TELLER_CERT")
@@ -575,33 +602,27 @@ def main():
             app_id = input("Teller Application ID (app_xxxxxxxx): ").strip()
         if not app_id:
             sys.exit("Application ID required for --connect.")
-        token = run_connect_flow(app_id, args.port)
+        run_connect_flow(app_id, args.port)
+        tokens_dict = load_teller_tokens()
     else:
-        # Resolve token: --token can be a literal token or an env var name
-        # Falls back to TELLER_TOKEN if nothing else is provided
-        raw = args.token
-        if raw:
-            # If it looks like an env var name (all caps, underscores), resolve it
-            token = os.environ.get(raw, raw)
-        else:
-            # Auto-detect: look for any TELLER_*_TOKEN or TELLER_TOKEN in env
-            token = None
-            for key, val in os.environ.items():
-                if key == "TELLER_TOKEN" or (key.startswith("TELLER_") and key.endswith("_TOKEN")):
-                    token = val
-                    print(f"  Using token from env: {key}")
-                    break
-        if not token:
+        tokens_dict = load_teller_tokens()
+        
+        # Optionally allow passing a temporary --token for a quick run
+        if args.token:
+            raw = args.token
+            tmp_token = os.environ.get(raw, raw)
+            if tmp_token:
+                tokens_dict["cli_arg"] = tmp_token
+
+        if not tokens_dict:
             sys.exit(
-                "No token found.\n"
-                "  First-time: run with --connect to enroll your bank account.\n"
-                "  Daily use:  pass --token TELLER_COF_TOKEN (env var name) or the token directly,\n"
-                "              or set TELLER_TOKEN / TELLER_COF_TOKEN in .env"
+                "No tokens found in data/teller_tokens.json.\n"
+                "  First-time: run with --connect to enroll your bank account."
             )
 
     # ── Daily sync ──────────────────────────────────────────────────────
     print(f"\nSyncing with Teller API…  ({date.today().isoformat()})")
-    result = sync(token, cert, verbose=args.verbose)
+    result = sync(tokens_dict, cert, verbose=args.verbose)
 
     if result:
         accounts, balances_by_id, txn_df, new_txn_rows = result

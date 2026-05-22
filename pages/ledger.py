@@ -1,5 +1,5 @@
 """
-pages/ledger.py — Transaction ledger with search/filter
+pages/ledger.py — Transaction ledger with cascading search/filter
 """
 
 import asyncio
@@ -7,8 +7,112 @@ from nicegui import ui
 from datetime import date, timedelta
 
 
+def _load_registry():
+    from accounts import load_registry, ensure_registry_from_balances
+    registry = load_registry()
+    if not registry:
+        registry = ensure_registry_from_balances()
+    return registry
+
+
+def _acct_type_reverse(registry: dict) -> dict:
+    """Build account_id -> type_label reverse map."""
+    rev = {}
+    for aid, reg in registry.items():
+        atype = reg.get("type", "")
+        if atype == "credit":
+            rev[aid] = "Credit Cards"
+        elif atype == "depository":
+            rev[aid] = "Checking"
+        elif atype == "manual_asset":
+            rev[aid] = "Assets"
+        elif atype == "manual_liability":
+            rev[aid] = "Liabilities"
+        else:
+            rev[aid] = atype.replace("_", " ").title()
+    return rev
+
+
 async def render():
+    registry = _load_registry()
+    acct_rev = _acct_type_reverse(registry)
+
+    # Build full option sets and cross-reference maps
+    # Use DICT options everywhere — NiceGUI handles dict option changes more reliably
+    known_types = sorted(set(acct_rev.values()))
+    type_opts = {t: t for t in known_types}  # dict: key=value=label
+    full_acct_opts = {}
+    type_to_accts = {}
+    for aid, reg in registry.items():
+        name = reg.get("name", "")
+        inst = reg.get("institution", "")
+        if name:
+            full_acct_opts[aid] = f"{inst} · {name}" if inst else name
+        t = acct_rev.get(aid, "Other")
+        type_to_accts.setdefault(t, []).append(aid)
+
     with ui.column().classes('w-full min-h-screen bg-[#0a0f1e] p-6 gap-6'):
+
+        # ── Shared filter state (persists across refreshes) ─────────────
+        F = {'days': 30, 'types': [], 'accts': [], 'status': 'all', 'search': ''}
+        _render_gen = [0]
+
+        def get_restricted_acct_opts():
+            """Account options limited by selected types."""
+            if F['types']:
+                allowed = set()
+                for t in F['types']:
+                    allowed.update(type_to_accts.get(t, []))
+                return {aid: lbl for aid, lbl in full_acct_opts.items() if aid in allowed}
+            return dict(full_acct_opts)
+
+        def get_restricted_type_opts():
+            """Type options limited by selected accounts."""
+            if F['accts']:
+                allowed = {acct_rev.get(a, "Other") for a in F['accts'] if a in full_acct_opts}
+                return {t: t for t in known_types if t in allowed}
+            return dict(type_opts)
+
+        def handle_change(key, value):
+            F[key] = value
+            filter_ui.refresh()  # recreates selects with correct options
+            _render_gen[0] += 1
+            asyncio.create_task(load_table(_render_gen[0]))
+
+        @ui.refreshable
+        def filter_ui():
+            with ui.card().classes('w-full bg-[#0d1526] border border-[#1e2d4a] rounded-xl p-4'):
+                with ui.row().classes('gap-4 flex-wrap items-end'):
+                    ui.select(
+                        {7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days', 365: 'Last year'},
+                        value=F['days'], label='Period',
+                        on_change=lambda e: handle_change('days', e.value),
+                    ).classes('w-40')
+
+                    search_input = ui.input(placeholder='Search description...', value=F['search']).classes('flex-1 min-w-[200px]')
+                    search_input.props('dense outlined dark')
+                    search_input.on('keydown.enter', lambda: (
+                        F.__setitem__('search', search_input.value),
+                        asyncio.create_task(load_table(_render_gen[0])),
+                    ))
+
+                    ui.select(
+                        get_restricted_type_opts(), value=F['types'],
+                        label='Account Type', multiple=True, clearable=True,
+                        on_change=lambda e: handle_change('types', e.value),
+                    ).classes('w-52')
+
+                    ui.select(
+                        get_restricted_acct_opts(), value=F['accts'],
+                        label='Account', multiple=True, clearable=True,
+                        on_change=lambda e: handle_change('accts', e.value),
+                    ).classes('w-52')
+
+                    ui.select(
+                        {'all': 'All', 'posted': 'Posted', 'pending': 'Pending'},
+                        value=F['status'], label='Status',
+                        on_change=lambda e: handle_change('status', e.value),
+                    ).classes('w-40')
 
         # ── Header ──────────────────────────────────────────────────────
         with ui.row().classes('w-full items-center justify-between'):
@@ -21,29 +125,7 @@ async def render():
             )
 
         # ── Filters ─────────────────────────────────────────────────────
-        with ui.card().classes('w-full bg-[#0d1526] border border-[#1e2d4a] rounded-xl p-4'):
-            with ui.row().classes('gap-4 flex-wrap items-end'):
-                days_select = ui.select(
-                    {7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days', 365: 'Last year'},
-                    value=30, label='Period'
-                ).classes('w-40')
-
-                search_input = ui.input(placeholder='Search description...').classes('flex-1 min-w-[200px]')
-                search_input.props('dense outlined dark')
-
-                type_filter = ui.select(
-                    {'all': 'All types', 'debit': 'Debits only', 'credit': 'Credits only'},
-                    value='all', label='Type'
-                ).classes('w-40')
-
-                status_filter = ui.select(
-                    {'all': 'All', 'posted': 'Posted', 'pending': 'Pending'},
-                    value='all', label='Status'
-                ).classes('w-40')
-
-                ui.button('Apply', icon='filter_list', on_click=lambda: asyncio.create_task(load_table())).classes(
-                    'bg-[#1e2d4a] text-[#4fc3f7]'
-                )
+        filter_ui()
 
         # ── Summary chips ────────────────────────────────────────────────
         summary_row = ui.row().classes('gap-4 flex-wrap')
@@ -51,19 +133,25 @@ async def render():
         # ── Table ────────────────────────────────────────────────────────
         table_container = ui.column().classes('w-full')
 
-        async def load_table():
+        # ── Load data ───────────────────────────────────────────────────
+
+        async def load_table(gen: int = 0):
             def safe_str(val):
                 import math
                 if val is None or (isinstance(val, float) and math.isnan(val)):
                     return "—"
                 return str(val)
-            table_container.clear()
-            summary_row.clear()
 
             from teller_client import get_recent_transactions
             import pandas as pd
 
-            df = get_recent_transactions(days=days_select.value)
+            if gen != _render_gen[0]:
+                return
+
+            table_container.clear()
+            summary_row.clear()
+
+            df = get_recent_transactions(days=F['days'])
 
             if df.empty:
                 with table_container:
@@ -73,23 +161,34 @@ async def render():
                         ui.label('Run a sync or check your Teller configuration').classes('text-[#4a5568] text-sm')
                 return
 
-            # Apply filters
-            if search_input.value:
-                mask = df["description"].str.contains(search_input.value, case=False, na=False)
-                df   = df[mask]
+            # Apply search
+            if F['search']:
+                df = df[df["description"].str.contains(F['search'], case=False, na=False)]
 
-            if type_filter.value == 'debit':
-                df = df[df["amount"] > 0]
-            elif type_filter.value == 'credit':
-                df = df[df["amount"] < 0]
+            # Apply account type filter
+            sel_types = F['types']
+            if sel_types:
+                matching_ids = {aid for aid, t in acct_rev.items() if t in sel_types}
+                df = df[df["account_id"].isin(matching_ids)]
 
-            if status_filter.value != 'all':
-                df = df[df["status"] == status_filter.value]
+            # Apply account filter
+            sel_accts = F['accts']
+            if sel_accts:
+                df = df[df["account_id"].isin(sel_accts)]
+
+            # Build account-type-aware debit/credit mask
+            df["_acct_type"] = df["account_id"].map(acct_rev).fillna("Other")
+            df["_is_checking"] = df["_acct_type"] == "Checking"
+            df["_is_debit"] = (df["amount"] > 0) != df["_is_checking"]
+
+            # Apply status filter
+            if F['status'] != 'all':
+                df = df[df["status"] == F['status']]
 
             # ── Summary chips ──────────────────────────────────────────
             with summary_row:
-                total_debits  = df[df["amount"] > 0]["amount"].sum()
-                total_credits = df[df["amount"] < 0]["amount"].abs().sum()
+                total_debits  = df[df["_is_debit"]]["amount"].abs().sum()
+                total_credits = df[~df["_is_debit"]]["amount"].abs().sum()
                 net           = total_credits - total_debits
 
                 def chip(label, value, color):
@@ -104,9 +203,10 @@ async def render():
 
             # ── Category breakdown ─────────────────────────────────────
             cats = (
-                df[df["amount"] > 0]
+                df[df["_is_debit"]]
                 .groupby("category")["amount"]
                 .sum()
+                .abs()
                 .sort_values(ascending=False)
                 .head(5)
             )
@@ -144,14 +244,16 @@ async def render():
                         amt = float(amt)
                     except (ValueError, TypeError):
                         amt = 0.0
+                    is_debit = bool(row.get("_is_debit", False))
+                    acct_type = row.get("_acct_type", "")
                     rows.append({
                         "date":        row.get("date",""),
-                        "institution": f"{row.get('institution','')} · {row.get('account_name','')}",
+                        "institution": f"{acct_type}  ·  {row.get('institution','')} · {row.get('account_name','')}",
                         "description": row.get("description",""),
                         "category":    safe_str(row.get("category")).replace("_", " ").title(),
                         "status":      row.get("status",""),
-                        "amount_fmt":  f"{'+'if amt<0 else '-'}${abs(amt):,.2f}",
-                        "_debit":      amt > 0,
+                        "amount_fmt":  f"{'-'if is_debit else '+'}${abs(amt):,.2f}",
+                        "_debit":      is_debit,
                     })
 
                 table = ui.table(columns=columns, rows=rows, row_key="date").classes(
@@ -173,7 +275,7 @@ async def render():
         # Export handler
         def export_csv():
             from teller_client import get_recent_transactions
-            df = get_recent_transactions(days=days_select.value)
+            df = get_recent_transactions(days=F['days'])
             path = '/tmp/transactions_export.csv'
             df.to_csv(path, index=False)
             ui.download(path, 'transactions.csv')
@@ -181,3 +283,4 @@ async def render():
         export_btn.on('click', export_csv)
 
         await load_table()
+

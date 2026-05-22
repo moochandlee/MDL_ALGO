@@ -2,6 +2,7 @@
 config.py — centralised settings loaded from .env
 """
 
+import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -50,6 +51,10 @@ class Settings:
     # Default sweep target symbol (e.g. SNSXX = Schwab money market, or SPY)
     sweep_symbol: str = field(default_factory=lambda: os.getenv("SWEEP_SYMBOL", "SNSXX"))
 
+    risk_state_path: str = field(default_factory=lambda: os.getenv("RISK_STATE_PATH", "data/risk_state.json"))
+    deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))
+    deepseek_model: str = field(default_factory=lambda: os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+
     def teller_cert_tuple(self):
         c = str(Path(self.teller_cert).expanduser()) if self.teller_cert else None
         k = str(Path(self.teller_key).expanduser())  if self.teller_key  else None
@@ -59,9 +64,19 @@ class Settings:
 
     def is_configured(self) -> dict:
         """Return which integrations are ready."""
+        # Teller can use .env or data/teller_tokens.json
+        teller_ok = bool(self.teller_token and self.teller_cert_tuple())
+        if not teller_ok:
+            tokens_path = self.data_dir / "teller_tokens.json"
+            if tokens_path.exists():
+                try:
+                    if json.loads(tokens_path.read_text()):
+                        teller_ok = bool(self.teller_cert_tuple())
+                except Exception:
+                    pass
         return {
             "schwab": bool(self.schwab_app_key and self.schwab_app_secret),
-            "teller": bool(self.teller_token and self.teller_cert_tuple()),
+            "teller": teller_ok,
             "email":  bool(self.smtp_user and self.smtp_password and self.alert_email_to),
             "push":   bool(self.ntfy_topic),
         }
