@@ -769,8 +769,10 @@ async def render():
                             ui.icon('warning', color='#ef4444').classes('text-2xl')
                             ui.label('Schwab disconnected — re-authorization required').classes('text-white font-bold')
                         with ui.row().classes('gap-3 mt-3 flex-wrap items-end'):
-                            ui.button('Open Schwab Auth', on_click=lambda: ui.open(auth_url)).classes('bg-[#ef4444] text-white')
-                            callback_input = ui.input('Callback URL', placeholder='Paste the full redirect URL here...').classes('flex-1 min-w-[300px]')
+                            with ui.column().classes('gap-1'):
+                                ui.label('Step 1: Open this link').classes('text-[#8899aa] text-xs')
+                                ui.link('Schwab Authorization', auth_url, new_tab=True).classes('text-[#4fc3f7] underline')
+                            callback_input = ui.input('Step 2: Paste redirect URL', placeholder='https://127.0.0.1/?code=...').classes('flex-1 min-w-[300px]')
                             callback_input.props('dense outlined dark')
 
                             def do_reauth():

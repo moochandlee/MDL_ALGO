@@ -14,6 +14,7 @@ from pages import dashboard, ledger, orders, settings_page
 from execution.guardrails import initialize_risk_engine
 from pages import quant_agent_page
 from pages import strategies
+from pages import strategy_browser, backtest_runner, results_dashboard
 
 # ── PWA manifest + service worker registration ──────────────────────────────
 app.add_static_files('/static', 'static')
@@ -69,12 +70,15 @@ def nav_shell():
 
     with drawer:
         nav_items = [
-            ('dashboard',    'Dashboard',   '/'),
-            ('receipt_long', 'Ledger',      '/ledger'),
-            ('trending_up',  'Trading',     '/orders'),
-            ('psychology',   'Quant Agent', '/quant'),
-            ('settings',     'Settings',    '/settings'),
-            ('insights',      'Strategies',  '/strategies'),
+            ('dashboard',    'Dashboard',        '/'),
+            ('receipt_long', 'Ledger',           '/ledger'),
+            ('trending_up',  'Trading',          '/orders'),
+            ('psychology',   'Quant Agent',      '/quant'),
+            ('insights',     'Strategies',       '/strategies'),
+            ('library_books','Strategy Library', '/strat-library'),
+            ('science',      'Backtest Runner',  '/backtest'),
+            ('analytics',    'Results',          '/results'),
+            ('settings',     'Settings',         '/settings'),
         ]
         for icon, label, path in nav_items:
             with ui.link(target=path).classes('no-underline w-full'):
@@ -137,6 +141,27 @@ async def strategies_pg():
     ui.add_head_html('<style>body{background:#0a0f1e}</style>')
     nav_shell()
     await strategies.render()
+
+
+@ui.page('/strat-library')
+async def strat_library_pg():
+    ui.add_head_html('<style>body{background:#0a0f1e}</style>')
+    nav_shell()
+    await strategy_browser.render()
+
+
+@ui.page('/backtest')
+async def backtest_pg():
+    ui.add_head_html('<style>body{background:#0a0f1e}</style>')
+    nav_shell()
+    await backtest_runner.render()
+
+
+@ui.page('/results')
+async def results_pg():
+    ui.add_head_html('<style>body{background:#0a0f1e}</style>')
+    nav_shell()
+    await results_dashboard.render()
 
 
 # ── Startup ──────────────────────────────────────────────────────────────────
