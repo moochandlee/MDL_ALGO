@@ -782,7 +782,7 @@ async def render():
                                     return
                                 if complete_schwab_auth(pasted):
                                     ui.notify('Schwab re-authorized!', type='positive')
-                                    asyncio.create_task(load_all())
+                                    ui.timer(0.3, load_all, once=True)
                                 else:
                                     ui.notify('Re-auth failed. Check the URL and try again.', type='negative')
 
