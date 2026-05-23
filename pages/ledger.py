@@ -74,8 +74,12 @@ async def render():
             return dict(type_opts)
 
         def handle_change(key, value):
+            if key == 'days':
+                value = int(value)
+            elif key in ('types', 'accts') and value is None:
+                value = []
             F[key] = value
-            filter_ui.refresh()  # recreates selects with correct options
+            filter_ui.refresh()
             _render_gen[0] += 1
             asyncio.create_task(load_table(_render_gen[0]))
 
@@ -93,6 +97,7 @@ async def render():
                     search_input.props('dense outlined dark')
                     search_input.on('keydown.enter', lambda: (
                         F.__setitem__('search', search_input.value),
+                        _render_gen.__setitem__(0, _render_gen[0] + 1),
                         asyncio.create_task(load_table(_render_gen[0])),
                     ))
 
@@ -151,7 +156,7 @@ async def render():
             table_container.clear()
             summary_row.clear()
 
-            df = get_recent_transactions(days=F['days'])
+            df = get_recent_transactions(days=int(F['days']))
 
             if df.empty:
                 with table_container:
@@ -167,13 +172,13 @@ async def render():
 
             # Apply account type filter
             sel_types = F['types']
-            if sel_types:
+            if sel_types and isinstance(sel_types, list):
                 matching_ids = {aid for aid, t in acct_rev.items() if t in sel_types}
                 df = df[df["account_id"].isin(matching_ids)]
 
             # Apply account filter
             sel_accts = F['accts']
-            if sel_accts:
+            if sel_accts and isinstance(sel_accts, list):
                 df = df[df["account_id"].isin(sel_accts)]
 
             # Build account-type-aware debit/credit mask
@@ -275,7 +280,7 @@ async def render():
         # Export handler
         def export_csv():
             from teller_client import get_recent_transactions
-            df = get_recent_transactions(days=F['days'])
+            df = get_recent_transactions(days=int(F['days']))
             path = '/tmp/transactions_export.csv'
             df.to_csv(path, index=False)
             ui.download(path, 'transactions.csv')

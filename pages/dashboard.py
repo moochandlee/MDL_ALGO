@@ -66,7 +66,10 @@ def _gather() -> dict:
     from schwab_client import get_balances_and_positions
 
     teller_bals = get_latest_balances()
-    schwab = get_balances_and_positions()
+    try:
+        schwab = get_balances_and_positions()
+    except Exception:
+        schwab = {"error": "Schwab API unavailable"}
     loans = load_loans()
 
     tx_file = settings.data_dir / "transactions.csv"
@@ -737,15 +740,10 @@ async def render():
         content = ui.column().classes('w-full gap-6')
 
         async def load_all():
-            summary_row.clear()
-            sweep_section.clear()
-            content.clear()
-
             loading = ui.spinner('dots', size='lg', color='#4fc3f7')
             await asyncio.sleep(0.1)
 
             try:
-                from scheduler import trigger_manual_sync
                 data = _gather()
                 expense = get_expense_analysis(months=3)
                 proj = project_net_worth(data, expense)
@@ -756,6 +754,10 @@ async def render():
                 return
 
             loading.delete()
+
+            summary_row.clear()
+            sweep_section.clear()
+            content.clear()
 
             # Summary cards
             with summary_row:
