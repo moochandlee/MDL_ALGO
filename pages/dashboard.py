@@ -759,6 +759,33 @@ async def render():
             sweep_section.clear()
             content.clear()
 
+            # Schwab re-auth banner
+            from schwab_client import is_schwab_auth_needed, get_schwab_auth_url, complete_schwab_auth
+            if is_schwab_auth_needed():
+                auth_url = get_schwab_auth_url() or ""
+                with summary_row:
+                    with ui.card().classes('w-full bg-[#1a0a0a] border border-[#ef4444] rounded-xl p-4'):
+                        with ui.row().classes('items-center gap-3 flex-wrap'):
+                            ui.icon('warning', color='#ef4444').classes('text-2xl')
+                            ui.label('Schwab disconnected — re-authorization required').classes('text-white font-bold')
+                        with ui.row().classes('gap-3 mt-3 flex-wrap items-end'):
+                            ui.button('Open Schwab Auth', on_click=lambda: ui.open(auth_url)).classes('bg-[#ef4444] text-white')
+                            callback_input = ui.input('Callback URL', placeholder='Paste the full redirect URL here...').classes('flex-1 min-w-[300px]')
+                            callback_input.props('dense outlined dark')
+
+                            def do_reauth():
+                                pasted = callback_input.value or ""
+                                if not pasted:
+                                    ui.notify('Paste the callback URL from your browser address bar', type='warning')
+                                    return
+                                if complete_schwab_auth(pasted):
+                                    ui.notify('Schwab re-authorized!', type='positive')
+                                    asyncio.create_task(load_all())
+                                else:
+                                    ui.notify('Re-auth failed. Check the URL and try again.', type='negative')
+
+                            ui.button('Complete Re-auth', on_click=do_reauth).classes('bg-[#22c55e] text-black font-bold')
+
             # Summary cards
             with summary_row:
                 total_bank = 0

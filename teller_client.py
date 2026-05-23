@@ -121,13 +121,13 @@ def sync_teller() -> dict:
 
     for label, token in tokens.items():
         try:
-            accounts = fetch_accounts(token=token)
-            all_accounts.extend(accounts)
+            accts = fetch_accounts(token=token)
+            all_accounts.extend(accts)
         except Exception as e:
             print(f"Error fetching accounts for {label}: {e}")
             continue
 
-        for acct in accounts:
+        for acct in accts:
             aid  = acct["id"]
             inst = acct.get("institution", {}).get("name", "Unknown")
             name = acct.get("name", "")

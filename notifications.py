@@ -151,6 +151,12 @@ def notify_order_filled(symbol: str, shares: int, side: str):
     send_push(title, message, priority="default", tags=["white_check_mark"])
 
 
+def notify_schwab_auth_needed():
+    title = "Schwab Re-auth Required"
+    message = "Your Schwab OAuth token has expired. Open the Finance Autopilot dashboard to re-authorize."
+    send_push(title, message, priority="high", tags=["warning", "lock"])
+
+
 def notify_daily_summary(accounts_count: int, new_txns: int, brokerage_value: float):
     title   = "Daily Finance Summary"
     message = (
